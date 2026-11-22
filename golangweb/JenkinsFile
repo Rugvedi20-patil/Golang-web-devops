@@ -56,22 +56,25 @@ pipeline {
                 echo 'Pushing image to DockerHub'
 
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
+            credentialsId: 'dockerhub-credentials',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
+            powershell '''
+                $env:DOCKER_CONFIG = "$env:WORKSPACE/.docker"
+                New-Item -ItemType Directory -Force -Path $env:DOCKER_CONFIG | Out-Null
 
-                    powershell '''
-                        $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
+                Write-Host "User: [$($env:DOCKER_USER)] length: $($env:DOCKER_USER.Length)"
+                Write-Host "Password length: $($env:DOCKER_PASS.Length)"
 
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-                        docker push "$($env:DOCKER_IMAGE):$($env:IMAGE_TAG)"
+                docker push "$($env:DOCKER_IMAGE):$($env:IMAGE_TAG)"
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-                        docker logout
-                    '''
+                docker logout
+            '''
                 }
             }
         }
