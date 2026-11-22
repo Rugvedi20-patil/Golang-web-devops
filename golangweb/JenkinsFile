@@ -6,6 +6,10 @@ pipeline {
     environment {
         DOCKER_IMAGE = 'rugvedi/golangweb'
         IMAGE_TAG = "${BUILD_NUMBER}"
+
+        GO_HOME = 'C:\\Program Files\\Go'
+
+        PATH = "C:\\Program Files\\Go\\bin;C:\\Users\\Rugvedi\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;${env.PATH}"
     }
 
     stages {
