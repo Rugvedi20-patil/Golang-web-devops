@@ -1,3 +1,4 @@
+
 pipeline {
 
     agent any
@@ -44,8 +45,8 @@ pipeline {
 
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'rugvedipatil20062002@gmail.com',
-                    passwordVariable: 'Docker@20'
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
                 )]) {
 
                     powershell '''
