@@ -20,14 +20,20 @@ pipeline {
         stage('Go Build') {
             steps {
                 echo 'Building Golang application'
-                bat 'go build -o main.exe .'
+
+                dir('golangweb') {
+                    bat 'go build -o main.exe .'
+                }
             }
         }
 
         stage('Go Test') {
             steps {
                 echo 'Running Go tests'
-                bat 'go test ./...'
+
+                dir('golangweb') {
+                    bat 'go test ./...'
+                }
             }
         }
 
@@ -35,7 +41,9 @@ pipeline {
             steps {
                 echo 'Building Docker image'
 
-                bat 'docker build -t %DOCKER_IMAGE%:%IMAGE_TAG% .'
+                dir('golangweb') {
+                    bat 'docker build -t %DOCKER_IMAGE%:%IMAGE_TAG% .'
+                }
             }
         }
 
