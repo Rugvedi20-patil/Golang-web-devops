@@ -1,13 +1,18 @@
-
 pipeline {
 
     agent any
 
+    options {
+        skipDefaultCheckout(true)      // we do one explicit checkout below
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
     environment {
         DOCKER_IMAGE = 'rugvedi/golangweb'
-        IMAGE_TAG = "${BUILD_NUMBER}"
-
-        GO_HOME = 'C:\\Program Files\\Go'
+        IMAGE_TAG    = "${BUILD_NUMBER}"
+        APP_DIR      = 'golangweb'
 
         PATH = "C:\\Program Files\\Go\\bin;C:\\Users\\Rugvedi\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin;${env.PATH}"
     }
@@ -23,9 +28,8 @@ pipeline {
 
         stage('Go Build') {
             steps {
-                echo 'Building Golang application'
-
-                dir('golangweb') {
+                dir("${APP_DIR}") {
+                    bat 'go version'
                     bat 'go build -o main.exe .'
                 }
             }
@@ -33,9 +37,7 @@ pipeline {
 
         stage('Go Test') {
             steps {
-                echo 'Running Go tests'
-
-                dir('golangweb') {
+                dir("${APP_DIR}") {
                     bat 'go test ./...'
                 }
             }
@@ -43,38 +45,36 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                echo 'Building Docker image'
-
-                dir('golangweb') {
-                    bat 'docker build -t %DOCKER_IMAGE%:%IMAGE_TAG% .'
+                dir("${APP_DIR}") {
+                    bat 'docker build -t %DOCKER_IMAGE%:%IMAGE_TAG% -t %DOCKER_IMAGE%:latest .'
                 }
             }
         }
 
         stage('DockerHub Push') {
             steps {
-                echo 'Pushing image to DockerHub'
-
                 withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-credentials',
-            usernameVariable: 'DOCKER_USER',
-            passwordVariable: 'DOCKER_PASS'
-        )]) {
-            powershell '''
-                $env:DOCKER_CONFIG = "$env:WORKSPACE/.docker"
-                New-Item -ItemType Directory -Force -Path $env:DOCKER_CONFIG | Out-Null
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    powershell '''
+                        $ErrorActionPreference = 'Continue'
 
-                Write-Host "User: [$($env:DOCKER_USER)] length: $($env:DOCKER_USER.Length)"
-                Write-Host "Password length: $($env:DOCKER_PASS.Length)"
+                        # Isolated docker config so the Jenkins service account
+                        # doesn't depend on a credential helper
+                        $env:DOCKER_CONFIG = "$env:WORKSPACE/.docker"
+                        New-Item -ItemType Directory -Force -Path $env:DOCKER_CONFIG | Out-Null
 
-                $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                        $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
+                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-                docker push "$($env:DOCKER_IMAGE):$($env:IMAGE_TAG)"
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                        docker push "$($env:DOCKER_IMAGE):$($env:IMAGE_TAG)"
+                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-                docker logout
-            '''
+                        docker push "$($env:DOCKER_IMAGE):latest"
+                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                    '''
                 }
             }
         }
@@ -82,15 +82,18 @@ pipeline {
 
     post {
         success {
-            echo 'CI Pipeline completed successfully!'
-            echo 'Docker image pushed to DockerHub.'
+            echo "Pushed ${DOCKER_IMAGE}:${IMAGE_TAG} and ${DOCKER_IMAGE}:latest to Docker Hub."
         }
-
         failure {
-            echo 'CI Pipeline failed. Check Console Output.'
+            echo 'Pipeline failed. Check the console output.'
         }
-
         always {
+            // Remove the temporary docker login from the workspace
+            powershell '''
+                if (Test-Path "$env:WORKSPACE/.docker") {
+                    Remove-Item -Recurse -Force "$env:WORKSPACE/.docker"
+                }
+            '''
             echo 'Jenkins pipeline execution finished.'
         }
     }
