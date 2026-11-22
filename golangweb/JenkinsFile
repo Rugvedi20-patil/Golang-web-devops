@@ -51,30 +51,35 @@ pipeline {
             }
         }
 
-        stage('DockerHub Push') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    powershell '''
-                        $ErrorActionPreference = 'Continue'
+       stage('Login Test') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-credentials',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
+            powershell '''
+                Write-Host "Running as: $(whoami)"
+                Write-Host "User: [$($env:DOCKER_USER)] length: $($env:DOCKER_USER.Length)"
+                Write-Host "Password length: $($env:DOCKER_PASS.Length)"
 
-                        # Isolated docker config so the Jenkins service account
-                        # doesn't depend on a credential helper
-                        $env:DOCKER_CONFIG = "$env:WORKSPACE/.docker"
-                        New-Item -ItemType Directory -Force -Path $env:DOCKER_CONFIG | Out-Null
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                $hash = ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($env:DOCKER_PASS)) | ForEach-Object { $_.ToString('x2') }) -join ''
+                Write-Host "Password hash (first 8): $($hash.Substring(0,8))"
 
-                        $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                # Test 1: Docker Hub API directly (no docker client involved)
+                $body = @{ username = $env:DOCKER_USER; password = $env:DOCKER_PASS } | ConvertTo-Json
+                try {
+                    Invoke-RestMethod -Method Post -Uri 'https://hub.docker.com/v2/users/login' -ContentType 'application/json' -Body $body | Out-Null
+                    Write-Host "TEST 1 Hub API login: OK"
+                } catch {
+                    Write-Host "TEST 1 Hub API login: FAILED - $($_.Exception.Message)"
+                }
 
-                        docker push "$($env:DOCKER_IMAGE):$($env:IMAGE_TAG)"
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-                        docker push "$($env:DOCKER_IMAGE):latest"
-                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                    '''
+                # Test 2: docker login with -p (no pipe)
+                docker login -u $env:DOCKER_USER -p $env:DOCKER_PASS 2>&1 | Out-String | Write-Host
+                Write-Host "TEST 2 docker login -p exit code: $LASTEXITCODE"
+            '''
                 }
             }
         }
